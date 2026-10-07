@@ -81,7 +81,7 @@ npm_package(
         ":vite_plugin_a11y",
     ],
     package = "@tummycrypt/vite-plugin-a11y",
-    version = "0.2.4",
+    version = "0.3.0",
     visibility = ["//visibility:public"],
 )
 
