@@ -14,14 +14,19 @@
 BUILD.bazel for @tummycrypt/vite-plugin-a11y.
 
 Dual-mode build: works with both pnpm (standalone) and Bazel (CI/production).
-  Standalone: cd packages/vite-plugin-a11y && pnpm build
-  Monorepo:   bazel build //packages/vite-plugin-a11y/...
+  Standalone: pnpm test
+  Bazel:      bazel build //:pkg && bazel test //...
+  Consumers:  bazel_dep(name = "tummycrypt_vite_plugin_a11y", version = "1.0.0")
+              from xoxd-ai/bazel-registry, linked with
+              npm_link_package(name = "node_modules/@tummycrypt/vite-plugin-a11y",
+                               src = "@tummycrypt_vite_plugin_a11y//:pkg").
+              The package is not published to npm (RU6, RU8).
 """
 
 load("@aspect_rules_js//npm:defs.bzl", "npm_package")
 load("@aspect_rules_ts//ts:defs.bzl", "ts_project")
-load("@npm//:defs.bzl", "npm_link_all_packages")
-load("@npm//:vitest/package_json.bzl", vitest_bin = "bin")
+load("@tummycrypt_vite_plugin_a11y_npm//:defs.bzl", "npm_link_all_packages")
+load("@tummycrypt_vite_plugin_a11y_npm//:vitest/package_json.bzl", vitest_bin = "bin")
 
 # =============================================================================
 # npm link - makes node_modules available for this package
@@ -29,6 +34,16 @@ load("@npm//:vitest/package_json.bzl", vitest_bin = "bin")
 
 npm_link_all_packages(name = "node_modules")
 
+# Build-time npm deps: the peers (magic-string, svelte, vite) and @types/node.
+# They are needed to type-check and compile, and are never linked into
+# consumers (see `dist_js`).
+BUILD_DEPS = [
+    ":node_modules",
+    ":node_modules/magic-string",
+    ":node_modules/svelte",
+    ":node_modules/vite",
+    ":node_modules/@types/node",
+]
 
 # =============================================================================
 # TypeScript compilation
@@ -54,52 +69,63 @@ ts_project(
     out_dir = "dist",
     root_dir = "src",
     validate = False,
-    deps = [
-        ":node_modules",
-        # Runtime dependencies
-        ":node_modules/magic-string",
-        # Peer dependencies (resolved at build time via devDependencies)
-        ":node_modules/svelte",
-        ":node_modules/vite",
-        # Type definitions
-        ":node_modules/@types/node",
-    ],
+    deps = BUILD_DEPS,
     visibility = ["//visibility:public"],
+)
+
+# The compiled files only. A filegroup forwards files and drops the
+# ts_project's JsInfo, so `pkg` carries no npm_package_store_infos from this
+# module's own lock. A consumer's npm_link_package then links the package
+# with no private node_modules/{magic-string,svelte,vite}; Node resolves the
+# peers from the consuming app's single pnpm lock (RU9; U1 Bazel finding N1).
+# ts_project's default outputs are the .js files; the declarations
+# (.d.ts, .d.ts.map) come from its `types` output group.
+filegroup(
+    name = "dist_js",
+    srcs = [":vite_plugin_a11y"],
+)
+
+filegroup(
+    name = "dist_types",
+    srcs = [":vite_plugin_a11y"],
+    output_group = "types",
 )
 
 # =============================================================================
 # npm package target
-#
-# Packages the compiled output into a publishable npm package structure.
 # =============================================================================
 
 npm_package(
     name = "pkg",
     srcs = [
-        "package.json",
+        "CHANGELOG.md",
         "LICENSE",
-        ":vite_plugin_a11y",
+        "README.md",
+        "package.json",
+        ":dist_js",
+        ":dist_types",
     ],
+    # Ship the compiled files and docs only, never runfiles (node_modules).
+    include_runfiles = False,
     package = "@tummycrypt/vite-plugin-a11y",
-    version = "0.3.0",
+    version = "1.0.0",
     visibility = ["//visibility:public"],
 )
 
 # =============================================================================
 # Test targets
 #
-# Compiles and runs vitest test files from the tests/ directory.
-# Uses vitest in run mode (no watch) for hermetic CI execution.
+# Runs the vitest suites under tests/ in run mode (no watch).
 # =============================================================================
 
 vitest_bin.vitest_test(
     name = "test",
     data = [
-        ":node_modules",
+        "package.json",
         "tsconfig.json",
         ":node_modules/vitest",
         "vitest.config.ts",
-    ] + glob(["src/**/*.ts"]) + glob(["tests/**/*.test.ts", "tests/**/*.ts"]),
+    ] + BUILD_DEPS + glob(["src/**/*.ts"]) + glob(["tests/**/*.ts"]),
     args = [
         "run",
         "--reporter=verbose",
@@ -112,8 +138,6 @@ vitest_bin.vitest_test(
 
 # =============================================================================
 # Typecheck-only target (no emit)
-#
-# Useful for CI pipelines that want fast type validation without full build.
 # =============================================================================
 
 ts_project(
@@ -124,13 +148,7 @@ ts_project(
     tsconfig = ":tsconfig.json",
     transpiler = "tsc",
     validate = False,
-    deps = [
-        ":node_modules",
-        ":node_modules/magic-string",
-        ":node_modules/svelte",
-        ":node_modules/vite",
-        ":node_modules/@types/node",
-    ],
+    deps = BUILD_DEPS,
     visibility = ["//visibility:public"],
 )
 
