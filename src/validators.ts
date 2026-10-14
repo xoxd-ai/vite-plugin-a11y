@@ -15,8 +15,9 @@ interface SvelteASTNode {
 }
 
 interface SvelteASTAttribute {
+  type?: string;
   name: string;
-  value?: SvelteASTValue[];
+  value?: SvelteASTValue[] | boolean;
 }
 
 interface SvelteASTValue {
@@ -176,6 +177,18 @@ export function checkAriaLabels(ast: SvelteAST, code: string, filename: string):
 
 
 
+/**
+ * Event name handled by an attribute, or null. Covers both Svelte 5 event
+ * attributes (`onclick={...}`, an `Attribute` named `onclick`) and legacy
+ * directives (`on:click={...}`, an `EventHandler` named `click`).
+ */
+function eventName(attr: SvelteASTAttribute): string | null {
+  if (attr.type === 'EventHandler') return attr.name;
+  if (attr.name.startsWith('on:')) return attr.name.slice(3);
+  if (attr.name.startsWith('on') && attr.name.length > 2) return attr.name.slice(2);
+  return null;
+}
+
 export function checkKeyboardNavigation(
   ast: SvelteAST,
   code: string,
@@ -186,12 +199,12 @@ export function checkKeyboardNavigation(
   function walkNode(node: SvelteASTNode) {
     
     if (node.type === 'Element' && node.attributes) {
-      const hasOnClick = node.attributes.some(
-        (attr) => attr.name === 'on:click' || attr.name === 'onclick'
-      );
+      const handlers = node.attributes.map(eventName).filter((name) => name !== null);
 
-      const hasKeyHandler = node.attributes.some(
-        (attr) => attr.name === 'on:keydown' || attr.name === 'on:keyup' || attr.name === 'on:keypress'
+      const hasOnClick = handlers.includes('click');
+
+      const hasKeyHandler = handlers.some(
+        (name) => name === 'keydown' || name === 'keyup' || name === 'keypress'
       );
 
       const isNativelyKeyboardAccessible =
@@ -213,7 +226,7 @@ export function checkKeyboardNavigation(
 
       
       const tabindexAttr = node.attributes.find((attr) => attr.name === 'tabindex');
-      if (tabindexAttr && tabindexAttr.value && tabindexAttr.value[0]) {
+      if (tabindexAttr && Array.isArray(tabindexAttr.value) && tabindexAttr.value[0]) {
         const tabindexValue = parseInt(tabindexAttr.value[0].data || '0');
         if (tabindexValue > 0 && node.start !== undefined) {
           const position = getLineColumn(code, node.start);
