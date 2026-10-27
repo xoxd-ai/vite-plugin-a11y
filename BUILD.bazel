@@ -15,7 +15,8 @@ BUILD.bazel for @tummycrypt/vite-plugin-a11y.
 
 Dual-mode build: works with both pnpm (standalone) and Bazel (CI/production).
   Standalone: pnpm test
-  Bazel:      bazel build //:pkg && bazel test //...
+  Gate:       CI (.github/workflows/ci.yml) builds //:pkg //:test.
+  Bazel:      bazel build //:pkg && bazel test //... (local, non-qualifying)
   Consumers:  bazel_dep(name = "tummycrypt_vite_plugin_a11y", version = "1.0.0")
               from xoxd-ai/bazel-registry, linked with
               npm_link_package(name = "node_modules/@tummycrypt/vite-plugin-a11y",

@@ -56,7 +56,11 @@ summary and annotates low-contrast rules with a comment.
 ```sh
 pnpm install --frozen-lockfile
 pnpm typecheck && pnpm test && pnpm build
-bazel build //:pkg && bazel test //...
+bazel build //:pkg && bazel test //...   # local, non-qualifying
 ```
+
+CI (`.github/workflows/ci.yml`, `bazel_targets: "//:pkg //:test"`) is the
+qualifying gate. A local run is a non-qualifying check, and `.bazelrc` sets
+`startup --max_idle_secs=120`, so its Bazel server exits after 120 s idle.
 
 See CHANGELOG.md for the 1.0.0 migration note.
